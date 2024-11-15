@@ -1,0 +1,998 @@
+---
+title: "Tanzania fertilizer use efficiency, profitability and risks across time"
+format: 
+    html:
+      code-fold: true
+      code-tools: true
+fig-dpi: 300
+fig-width: 8.88
+fig-align: center
+fig-height: 5
+
+self-contained: true
+author: Maxwell Mkondiwa (m.mkondiwa@cgiar.org) and Jordan Chamberlin (j.chamberlin@cgiar.org)
+editor: visual
+toc: true
+toc-location: left
+number-sections: true
+execute: 
+  message: false
+  warning: false
+  echo: true
+---
+
+
+# Introduction
+
+This notebook provides R code for the paper on estimating the heterogenous treatment effects in Tanzania using non-parametric geoadditive and causal machine learning (ML) models. The analytics focus on addressing the following analysis questions:
+
+# Exploration
+
+
+```{r}
+# package names
+packages <- c("gplots", "modelsummary", "grf", "policytree", "ggplot2", "micEcon", "frontier", "dplyr", "tidyr", "knitr", "car", "RColorBrewer", "DT", "rio", "tidyr", "dsfa", "mgcv", "geodata", "sf", "mapview", "dplyr", "terra", "raster", "ggridges", "rio", "BART", "BART", "BayesTree", "bartCause", "plm", "rlearner")
+
+# install packages
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#     install.packages(packages[!installed_packages])
+# }
+
+# load packages
+invisible(lapply(packages, library, character.only = TRUE))
+# install.packages("collapse", repos = "https://fastverse.r-universe.dev")
+library(rio)
+
+
+#tz_lsms_panel <- import("tz_lsms_panel_plot_level_221117.dta")
+tz_lsms_panel <- import("tz_lsms_panel.csv")
+
+tz_lsms_panel$yld_[tz_lsms_panel$yld_ > quantile(tz_lsms_panel$yld_, 0.99, na.rm = TRUE)] <- NA
+tz_lsms_panel$N_kgha[tz_lsms_panel$N_kgha > quantile(tz_lsms_panel$N_kgha, 0.99, na.rm = TRUE)] <- NA
+
+tz_lsms_panel$plotha[tz_lsms_panel$plotha > quantile(tz_lsms_panel$plotha, 0.99, na.rm = TRUE)] <- NA
+
+tz_lsms_panel$N_kgha_dum <- 0
+tz_lsms_panel$N_kgha_dum[tz_lsms_panel$N_kgha > 0] <- 1
+
+tz_lsms_panel$N_kgha_dum <- as.numeric(tz_lsms_panel$N_kgha_dum)
+
+tz_lsms_panel$N_kgha_cond <- tz_lsms_panel$N_kgha
+tz_lsms_panel$N_kgha_cond[tz_lsms_panel$N_kgha_dum == 0] <- NA
+
+tz_lsms_panel$N_kgha_cond <- as.numeric(tz_lsms_panel$N_kgha_cond)
+
+
+tz_lsms_panel=subset(tz_lsms_panel, !(is.na(tz_lsms_panel$yld_)))
+tz_lsms_panel=subset(tz_lsms_panel, !(is.na(tz_lsms_panel$N_kgha)))
+tz_lsms_panel=subset(tz_lsms_panel, !(is.na(tz_lsms_panel$plotha)))
+tz_lsms_panel=subset(tz_lsms_panel, !(is.na(tz_lsms_panel$P_kgha)))
+tz_lsms_panel=subset(tz_lsms_panel, !(is.na(tz_lsms_panel$harv_yld_mai)))
+
+tz_lsms_panel$soc_5_15cm=tz_lsms_panel$`soc_5-15cm`
+tz_lsms_panel$nitrogen_0_5cm=tz_lsms_panel$`nitrogen_0-5cm`
+tz_lsms_panel$sand_0_5cm=tz_lsms_panel$`sand_0-5cm`
+tz_lsms_panel$ECN_5_15cm=tz_lsms_panel$`ECN_5-15cm`
+tz_lsms_panel$pH_0_5cm=tz_lsms_panel$`pH_0-5cm`
+
+
+```
+
+
+# Descriptives table
+
+
+```{r}
+library(modelsummary)
+
+mean_na <- function(x) mean(x, na.rm = TRUE)
+sd_na <- function(x) SD(x, na.rm = TRUE)
+summary_table_by_year <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha + ncrops + hhmem + femhead + headeduc + arain_tot+arain_cv) * (mean_na + sd_na) ~ Factor(year), data = tz_lsms_panel, output = "data.frame")
+
+summary_table_by_year_mean <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha + ncrops + hhmem + femhead + headeduc + arain_tot+arain_cv) * (mean_na) ~ Factor(year), data = tz_lsms_panel, output = "data.frame")
+
+
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('summary_table_by_year', 'summary_table_by_year.csv')"
+        ),
+        reactable(
+            summary_table_by_year,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "summary_table_by_year"
+        )
+    )
+)
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('summary_table_by_year_mean', 'summary_table_by_year_mean.csv')"
+        ),
+        reactable(
+            summary_table_by_year_mean,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "summary_table_by_year_mean"
+        )
+    )
+)
+
+# # By district and by year
+# summary_table_by_year_dist <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_g_0  + N_kgha + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot) * (mean_na + sd_na) ~ Factor(year*district), data = tz_lsms_panel, output = "data.frame")
+# 
+# library(reactable)
+# library(htmltools)
+# library(fontawesome)
+# 
+# htmltools::browsable(
+#     tagList(
+#         tags$button(
+#             tagList(fontawesome::fa("download"), "Download as CSV"),
+#             onclick = "Reactable.downloadDataCSV('summary_table_by_year_dist', 'summary_table_by_year_dist.csv')"
+#         ),
+#         reactable(
+#             summary_table_by_year,
+#             searchable = TRUE,
+#             defaultPageSize = 38,
+#             elementId = "summary_table_by_year_dist"
+#         )
+#     )
+# )
+
+
+tz_lsms_panel$region=as.factor(tz_lsms_panel$region)
+tz_lsms_panel$year=as.factor(tz_lsms_panel$year)
+
+# By district and by year
+summary_table_by_year_region <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha+ ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
+
+summary_table_by_year_region_mean <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha + ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
+
+
+summary_table_by_year_region_t=t(summary_table_by_year_region)
+summary_table_by_year_region_mean_t=t(summary_table_by_year_region_mean)
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('summary_table_by_year_region_t', 'summary_table_by_year_region_t.csv')"
+        ),
+        reactable(
+            summary_table_by_year_region_t,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "summary_table_by_year_region_t"
+        )
+    )
+)
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('summary_table_by_year_region_mean_t', 'summary_table_by_year_region_mean_t.csv')"
+        ),
+        reactable(
+            summary_table_by_year_region_mean_t,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "summary_table_by_year_region_mean_t"
+        )
+    )
+)
+```
+
+
+# Graphics
+
+
+```{r}
+
+library(gplots)
+plotmeans(yld_ ~ year, main="Yield heterogeineity across years",xlab="Year", ylab="Maize yield (kg/ha)", data=tz_lsms_panel)
+
+library(gplots)
+plotmeans(N_kgha ~ year, main="N per ha heterogeineity across years", data=tz_lsms_panel,xlab="Year", ylab="Average N per ha" )
+
+plotmeans(arain_tot~ year, main="Rainfall across years", data=tz_lsms_panel,xlab="Year", ylab="Average total rainfall (mm)" )
+
+library(easynls)
+library(lme4)
+library(data.table)
+library(ggplot2)
+
+# summary_table_by_year_mean_t=t(summary_table_by_year_mean)
+# 
+# ggplot(summary_table_by_year_mean) +
+#   geom_line(aes(x=N, y=Y, group=year, color=year))
+# 
+# ggplot(summary_table_by_year_region) +
+#   geom_line(aes(x=N, y=Y, group=region, color=region))
+```
+
+
+# Conventional Production Function Approach
+
+## Linear and non-linear parameter models: e.g., Quadratic
+
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(easynls)
+library(lme4)
+library(nlme)
+
+tz_lsms_panel=data.table(tz_lsms_panel)
+tz_lsms_panel$year=as.factor(tz_lsms_panel$year)
+
+#tz_lsms_panel_sf_subset=subset(tz_lsms_panel_sf, #select=c("V1","yld_","harv_yld_mai","N_kgha","P_kgha","year","soc_5-15cm","population_density","wc2.1_30s_elev","#sand_0-5cm","nitrogen_0-5cm","ECN_5-15cm","pH_0-5cm"))                                                      
+
+#library(tidyr)
+#tz_lsms_panel_sf_subset=tz_lsms_panel_sf_subset %>% drop_na()
+
+# Linear
+baseline_ols=lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot+region+year,data=tz_lsms_panel)
+
+summary(baseline_ols)
+
+# Lm List by year
+baseline_ols_yearList <- lmList(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot|year,tz_lsms_panel)
+
+coef(baseline_ols_yearList)
+
+(ci <- confint(baseline_ols_yearList))
+plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+
+## LINEAR PLATEAU
+# library(easynls)
+# library(data.table)
+# tz_lsms_panel <- data.table(tz_lsms_panel)
+# tz_lsms_panel.temp <- tz_lsms_panel[, .("yld_","N_kgha")]
+# nls.LP <- nlsfit(tz_lsms_panel.temp, model = 3)
+# nls.LP$Model
+# lp_model=nls.LP$Parameters
+# lp_model
+# summary(lp_model)
+
+# QUADRATIC
+
+baseline_quad=lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+region+year,data=tz_lsms_panel)
+
+summary(baseline_quad)
+
+library(modelsummary)
+
+modelplot(baseline_quad)
+
+# Lm List by year
+baseline_quad_lmList <- lmList(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc+arain_tot|year,tz_lsms_panel)
+
+coef(baseline_quad_lmList )
+
+(ci <- confint(baseline_quad_lmList ))
+plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+## with interactions
+# Lm List by year
+baseline_quad_lmList_inter <- lmList(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc|year,tz_lsms_panel)
+
+coef(baseline_quad_lmList_inter )
+
+(ci <- confint(baseline_quad_lmList_inter))
+plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+
+# Soil properties Interacted with soils 
+baseline_quad_lmList_inter_soil <- lmList(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm|year,tz_lsms_panel)
+
+
+
+coef(baseline_quad_lmList_inter_soil )
+
+(ci <- confint(baseline_quad_lmList_inter_soil))
+plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+
+
+
+# Quadratic plateau or linear plateau
+library(easynls)
+tz_lsms_panel.temp <- tz_lsms_panel[, c("yld_","N_kgha")]
+nls.QP <- nlsfit(tz_lsms_panel.temp, model = 4)
+nls.QP$Model
+mn=nls.QP$Parameters
+mn
+summary(mn)
+
+
+```
+
+
+### Site-year specific Quadratic Only response functions
+
+The site-year specific Quadratic response function can be modeled as At level 1, we have $$ Y_{i} = a_{i} + b_{i}*N + c_{i}*N^2 + \varepsilon_{i}  $$ At level 2, we have $$ 
+a_{i} \sim N(a_0, \sigma_{a}^2) \\
+b_{i} \sim N(b_0, \sigma_{b}^2) \\
+c_{i} \sim N(c_0, \sigma_{c}^2) \\
+$$ This model can be estimated with the linear mixed model function `lmer` in R package `lme4`
+
+
+```{r}
+tz_lsms_panel.temp <- tz_lsms_panel[, .(yld_, N_kgha, N2 = N_kgha^2, year)]
+lmer.Q <- lmer(yld_ ~ 1 + N_kgha + N2  + (1 | year) + (0 + N_kgha | year) + (0 + N2 | year), data = tz_lsms_panel.temp)
+lmer.Q
+summary(lmer.Q)
+```
+
+
+Or, althernatively, can be estimated with the non-linear mixed model function `nlme`
+
+
+```{r}
+library(nlme)
+nlme.Q <- nlme(yld_ ~ (a + b * N_kgha + c * (N_kgha^2)),
+                    data = tz_lsms_panel,
+                    fixed = a + b + c ~ 1,
+                    random = a + b + c ~ 1,
+                    groups = ~ year,
+                    start = c(800, 10, -0.001))
+
+nlme.Q
+```
+
+
+### Site-year specific Quadratic-plus-plateau response functions
+
+The site-year specific response function can be modeled using a hierarchical quadratic-plus-plateau model. At level 1, we have $$ Y_{i} = \min(a_{i} + b_{i}*N + c_{i}*N^2, Y_{max}) + \varepsilon_{i}  $$ At level 2, we have $$ 
+a_{i} \sim N(a_0, \sigma_{a}^2) \\
+b_{i} \sim N(b_0, \sigma_{b}^2) \\
+c_{i} \sim N(c_0, \sigma_{c}^2) \\
+Y_{max} = a_{i} - b_{i}^2/(4*c_i)
+$$
+
+It seems the R function `nlme` would work to estimate this model
+
+
+```{r}
+# Define quadratic-plus-plateau function
+mq <- lm(yld_ ~ N_kgha + I(N_kgha^2), data=tz_lsms_panel)
+a0 <- coef(mq)[[1]]
+b0 <- coef(mq)[[2]]
+c0 <- coef(mq)[[3]]
+clx0 <- -0.5*b0/c0
+
+# Test nls
+
+# fx.QP <- function(N, a, b, c) {
+#   y <- (a + b * N + c * I(N^2)) * (N <= -0.5 * b/c) + (a + I(-b^2/(4 * c))) * (N > -0.5 * b/c)
+#   return(y)
+# }
+# 
+# nls.QP <- nls(Y ~ fx.QP(N, a, b, c),
+#             start = list(a = a0, b = b0, c = c0), data = dat.Puntel.CC.mean,
+#             control = nls.control(maxiter = 6000))
+
+
+# quadplat <- function(x, a, b, clx) {
+#   ifelse(x  < clx, a + b * x   + (-0.5*b/clx) * x   * x, 
+#                             a + b * clx + (-0.5*b/clx) * clx * clx)
+# }
+# 
+# nls.QP <- nls(Y ~ quadplat(N, a, b, clx), 
+#             start = list(a = a0, b = b0, clx = clx0), data = dat.Puntel.CC.mean, 
+#             control = nls.control(maxiter = 6000))
+
+# nlme.QP <- nlme(Y ~ fx.QP(N, a, b, c),
+#                     data = dat.Puntel.CC.mean,
+#                     fixed = a + b + c ~ 1,
+#                     random = a + b + c ~ 1,
+#                     groups = ~ year,
+#                     start = c(a0, b0, c0))
+# 
+# nlme.QP
+
+# tz_lsms_panel.nlme <- nlme(yld_ ~ (a + b * N_kgha  + c * I(N_kgha  ^2)) * (N_kgha  <= (-0.5 * b/c)) + (a- I(b^2/(4 * c))) * (N_kgha  > (-0.5 * b/c)),
+#                     data = tz_lsms_panel,
+#                     fixed = a + b + c ~ 1,
+#                     random = a + b + c ~ 1,
+#                     groups = ~ year,
+#                     start = c(a0, b0, c0))
+# tz_lsms_panel.nlme
+
+```
+
+
+### Bayesian analysis
+
+
+```{r}
+# library(brms)
+# 
+# tz_lsms_panel$Nsq_kgha=tz_lsms_panel$N_kgha^2
+# tz_lsms_panel$Y=tz_lsms_panel$yld_
+# 
+# f1 <- Y ~ (a+ b*N_kgha+c*(Nsq_kgha))*(N_kgha<=(-0.5*b/c))+(a-(b*b/(4*c)))*(N_kgha>(-0.5*b/c))
+# 
+# prior_1=c(set_prior("normal(5,1)", nlpar="a"),
+# set_prior("normal(0,1)", nlpar="b"),
+# set_prior("normal(0,1)", nlpar="c"))
+# 
+# form=bf(f1,nl=TRUE)+list(a~1|year,b~1|year,c~1|year)
+# 
+# bayesQP=brm(form,prior=prior_1,data=tz_lsms_panel)
+# 
+# summary(bayesQP)            
+```
+
+
+## Nonlinear parameter models: geoadditive model
+
+
+```{r}
+set.seed(321)
+
+library(bamlss)
+
+# Linear
+f1 <- yld_~N_kgha + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot +population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm+ region + year
+
+b1 <- bamlss(f1, data = tz_lsms_panel, family = "gaussian", n.iter = 12000, burnin = 2000, thin = 10)
+
+
+summary(b1)
+
+# Nonlinear
+# f2=yld_~s(N_kgha)+s(plotha)+s(P_kgha)+s(ncrops)+s(hhmem)+femhead+headeduc+s(arain_tot)+ti(region)+ti(year)
+#
+# b2=bamlss(f2,data=tz_lsms_panel,family="gaussian", n.iter=12000, burnin=2000, thin=10)
+#
+#
+# summary(b2)
+# plot(b2, ask=FALSE)
+# #
+
+f3 <- list(
+    yld_ ~ s(N_kgha, by = year) + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot +population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,
+
+    sigma ~ s(N_kgha, by = year) + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm
+)
+
+b3 <- bamlss(f3, data = tz_lsms_panel)
+
+
+summary(b3)
+# plot(b3,ask=FALSE)
+
+plot(b3, cex = 2.5, model = "mu", term = "s(N_kgha,by=year)")
+plot(b3, cex = 2.5, model = "sigma", term = "s(N_kgha,by=year")
+
+```
+
+
+# Causal RF approach
+
+## Binary treatment
+
+
+```{r}
+library(grf)
+library(policytree)
+
+tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin", "yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified"))
+
+tz_lsms_panel_estim_fert$region <- as.numeric(tz_lsms_panel_estim_fert$region)
+tz_lsms_panel_estim_fert$year <- as.numeric(tz_lsms_panel_estim_fert$year)
+
+library(tidyr)
+tz_lsms_panel_estim_fert <- tz_lsms_panel_estim_fert %>% drop_na()
+
+
+Y_cf_fert <- as.vector(tz_lsms_panel_estim_fert$yld_)
+## Causal random forest -----------------
+
+X_cf_fert <- subset(tz_lsms_panel_estim_fert, select = c("plotha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year"))
+
+X_firststage_cf_fert <- subset(tz_lsms_panel_estim_fert, select = c("plotha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year"))
+
+
+W_cf_fert_binary <- as.vector(tz_lsms_panel_estim_fert$fert1_bin)
+
+# Probability random forest to create weights
+W.multi_fert.forest_binary <- regression_forest(X_cf_fert, W_cf_fert_binary,
+    equalize.cluster.weights = FALSE,
+    seed = 2
+)
+W.hat.multi.all_fert_binary <- predict(W.multi_fert.forest_binary, estimate.variance = TRUE)$predictions
+
+
+# Regression forest to get expected responses
+Y.multi_fert.forest_binary <- regression_forest(X_cf_fert, Y_cf_fert,
+    equalize.cluster.weights = FALSE,
+    seed = 2
+)
+
+print(Y.multi_fert.forest_binary)
+
+varimp.multi_fert_binary <- variable_importance(Y.multi_fert.forest_binary)
+Y.hat.multi.all_fert_binary <- predict(Y.multi_fert.forest_binary, estimate.variance = TRUE)$predictions
+
+# Fit binary causal RF model
+multi_fert.forest_binary <- causal_forest(X = X_cf_fert, Y = Y_cf_fert, W = W_cf_fert_binary, W.hat = W.hat.multi.all_fert_binary, Y.hat = Y.hat.multi.all_fert_binary, seed = 2)
+
+varimp.multi_fert_cf_binary <- variable_importance(multi_fert.forest_binary)
+
+# Average treatment effects
+multi_fert_ate_binary <- average_treatment_effect(multi_fert.forest_binary, target.sample = "overlap")
+multi_fert_ate_binary
+
+multi_fert_binary_calibration <- test_calibration(multi_fert.forest_binary)
+multi_fert_binary_calibration
+
+```
+
+
+## Continuous treatment
+
+
+```{r}
+library(grf)
+library(policytree)
+
+tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin", "yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified"))
+
+tz_lsms_panel_estim_fert$region <- as.numeric(tz_lsms_panel_estim_fert$region)
+tz_lsms_panel_estim_fert$year <- as.numeric(tz_lsms_panel_estim_fert$year)
+
+library(tidyr)
+tz_lsms_panel_estim_fert <- tz_lsms_panel_estim_fert %>% drop_na()
+
+
+Y_cf_fert <- as.vector(tz_lsms_panel_estim_fert$yld_)
+## Causal random forest -----------------
+
+X_cf_fert <- subset(tz_lsms_panel_estim_fert, select = c("plotha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year"))
+
+X_firststage_cf_fert <- subset(tz_lsms_panel_estim_fert, select = c("plotha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year"))
+
+
+W_cf_fert_continuous <- as.vector(tz_lsms_panel_estim_fert$N_kgha)
+
+# Probability random forest to create weights
+W.multi_fert.forest_continuous <- regression_forest(X_cf_fert, W_cf_fert_continuous,
+    equalize.cluster.weights = FALSE,
+    seed = 2
+)
+W.hat.multi.all_fert_continuous <- predict(W.multi_fert.forest_continuous, estimate.variance = TRUE)$predictions
+
+
+# Regression forest to get expected responses
+Y.multi_fert.forest_continuous <- regression_forest(X_cf_fert, Y_cf_fert,
+    equalize.cluster.weights = FALSE,
+    seed = 2
+)
+
+print(Y.multi_fert.forest_continuous)
+
+varimp.multi_fert_continuous <- variable_importance(Y.multi_fert.forest_continuous)
+Y.hat.multi.all_fert_continuous <- predict(Y.multi_fert.forest_continuous, estimate.variance = TRUE)$predictions
+
+# Fit continuous causal RF model
+multi_fert.forest_continuous <- causal_forest(X = X_cf_fert, Y = Y_cf_fert, W = W_cf_fert_continuous, W.hat = W.hat.multi.all_fert_continuous, Y.hat = Y.hat.multi.all_fert_continuous, seed = 2)
+
+varimp.multi_fert_cf_continuous <- variable_importance(multi_fert.forest_continuous)
+
+# Average treatment effects
+multi_fert_ate_continuous <- average_treatment_effect(multi_fert.forest_continuous, target.sample = "overlap")
+multi_fert_ate_continuous
+
+multi_fert_continuous_calibration <- test_calibration(multi_fert.forest_continuous)
+multi_fert_continuous_calibration
+
+
+library(ggridges)
+library(dplyr)
+library(ggplot2)
+
+tau.multi_fert.forest_continuous <- predict(multi_fert.forest_continuous, target.sample = "all", estimate.variance = TRUE)
+
+tau.multi_fert.forest_continuous <- as.data.frame(tau.multi_fert.forest_continuous)
+
+tau.multi_fert.forest_X <- data.frame(tz_lsms_panel_estim_fert, tau.multi_fert.forest_continuous)
+
+ggplot(tau.multi_fert.forest_X, aes(x = predictions, y = "", fill = factor(stat(quantile)))) +
+    stat_density_ridges(
+        geom = "density_ridges_gradient", calc_ecdf = TRUE,
+        quantiles = 4, quantile_lines = TRUE
+    ) +
+    scale_y_discrete(expand = c(0.01, 0)) +
+    scale_fill_viridis_d(name = "Quartiles") +
+    expand_limits(y = 1) +
+    theme_bw(base_size = 16) +
+    labs(x = "N use effect", y = "Density")
+
+```
+
+
+# Exploring heterogeneity in Conditional N Use Efficiencies from CRF
+
+## Causal RF
+
+
+```{r}
+library(ggplot2)
+NperHa_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$N_kgha > 0), aes(N_kgha, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Applied N per ha", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+NperHa_CATE_N_plot
+
+Plotsize_CATE_N_plot <- ggplot(tau.multi_fert.forest_X, aes(plotha, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Plot size (ha)", y = "N use efficiency")
+previous_theme <- theme_set(theme_bw(base_size = 16))
+Plotsize_CATE_N_plot
+
+P_CATE_N_plot <- ggplot(tau.multi_fert.forest_X, aes(P_kgha, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "P", y = "N use efficiency")
+previous_theme <- theme_set(theme_bw(base_size = 16))
+P_CATE_N_plot
+
+Hhmem_CATE_N_plot <- ggplot(tau.multi_fert.forest_X, aes(hhmem, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "HHMEM", y = "N use efficiency")
+previous_theme <- theme_set(theme_bw(base_size = 16))
+Hhmem_CATE_N_plot
+
+
+# By year
+NperHa_CATE_N_plot_yr <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$N_kgha > 0), aes(N_kgha, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    lims(x = c(0, 100)) +
+    labs(x = "Applied N per ha", y = "N use efficiency") +
+    theme_bw(base_size = 16) +
+    facet_wrap(~year)
+
+NperHa_CATE_N_plot_yr
+
+# By soil organic carbon
+
+library(ggplot2)
+soc_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$soc_5_15cm > 0), aes(soc_5_15cm, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Soil organic carbon (%)", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+soc_CATE_N_plot
+
+# By soil sand
+library(ggplot2)
+sand_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$sand_0_5cm > 0), aes(sand_0_5cm, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Sand (%)", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+sand_CATE_N_plot
+
+# Electrical conductivity
+library(ggplot2)
+soil_elec_cond_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$ECN_5_15cm > 0), aes(ECN_5_15cm, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Soil electrical conductivity", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+soil_elec_cond_CATE_N_plot
+
+# By density
+library(ggplot2)
+pop_density_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$population_density > 0), aes(population_density, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Population density", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+pop_density_CATE_N_plot
+
+# By elevation
+
+library(ggplot2)
+elev_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$wc2.1_30s_elev > 0), aes(wc2.1_30s_elev, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Elevation (masl)", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+elev_CATE_N_plot
+
+
+```
+
+
+# Are N use efficiencies falling overtime?
+
+## Causal RF
+
+
+```{r}
+Year_CATE_N_plot=ggplot(tau.multi_fert.forest_X,aes(year,predictions))+
+  geom_smooth(method="loess",formula=y~x,col="darkblue")+
+  labs(x="Year",y="N use efficiency")
+previous_theme <- theme_set(theme_bw())
+Year_CATE_N_plot
+
+
+```
+
+
+# Double machine learning (DML)
+
+
+```{r}
+
+
+
+
+
+```
+
+
+# Mapping the estimates
+
+
+```{r}
+library(ggridges)
+library(dplyr)
+library(ggplot2)
+
+tau.multi_fert.forest_dummy <- predict(multi_fert.forest_binary, target.sample = "all", estimate.variance = TRUE)
+
+tau.multi_fert.forest_dummy <- as.data.frame(tau.multi_fert.forest_dummy)
+
+tau.multi_fert.forest_X_dummy <- data.frame(tz_lsms_panel_estim_fert, tau.multi_fert.forest_dummy)
+
+ggplot(tau.multi_fert.forest_X_dummy, aes(x = predictions, y = "", fill = factor(stat(quantile)))) +
+    stat_density_ridges(
+        geom = "density_ridges_gradient", calc_ecdf = TRUE,
+        quantiles = 4, quantile_lines = TRUE
+    ) +
+    scale_y_discrete(expand = c(0.01, 0)) +
+    scale_fill_viridis_d(name = "Quartiles") +
+    expand_limits(y = 1) +
+    theme_bw(base_size = 16) +
+    labs(x = "Inorgatic fert use effect", y = "Density")
+
+#
+library(sp)
+library(sf)
+tau.multi_fert.forest_X_dummy_sp <- SpatialPointsDataFrame(cbind(tau.multi_fert.forest_X_dummy$lon_modified, tau.multi_fert.forest_X_dummy$lat_modified), data = tau.multi_fert.forest_X_dummy, proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+
+library(tmap)
+tmap_mode("plot")
+Nuse_effect_map <- tm_shape(tau.multi_fert.forest_X_dummy_sp) +
+    tm_dots(col = "predictions", title = "Effect of N use on yield (kg/ha)", style = "quantile") +
+    tm_layout(legend.outside = TRUE)
+Nuse_effect_map
+tmap_save(Nuse_effect_map, "figures/Nuse_effect_map.png", width = 600, height = 600, asp = 0)
+
+
+# N Use efficiency map
+library(sp)
+library(sf)
+tau.multi_fert.forest_X_sp <- SpatialPointsDataFrame(cbind(tau.multi_fert.forest_X$lon_modified, tau.multi_fert.forest_X$lat_modified), data = tau.multi_fert.forest_X, proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+
+library(tmap)
+tmap_mode("plot")
+Nuse_efficiency_map <- tm_shape(tau.multi_fert.forest_X_sp) +
+    tm_dots(col = "predictions", title = "NUE (kg Maize/Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE)
+Nuse_efficiency_map
+tmap_save(Nuse_efficiency_map, "figures/Nuse_efficiency_map.png", width = 600, height = 600, asp = 0)
+
+# N Use  map
+library(sp)
+library(sf)
+
+tau.multi_fert.forest_X_sp_small <- subset(tau.multi_fert.forest_X_sp, tau.multi_fert.forest_X_sp$N_kgha > 0)
+
+library(tmap)
+tmap_mode("plot")
+Nuse_map <- tm_shape(tau.multi_fert.forest_X_sp_small) +
+    tm_dots(col = "N_kgha", title = "N applied (Kg/ha)", style = "quantile") +
+    tm_layout(legend.outside = TRUE)
+Nuse_map
+tmap_save(Nuse_map, "figures/Nuse_map.png", width = 600, height = 600, asp = 0)
+```
+
+
+## Map of N Use Efficiencies overtime
+
+
+```{r}
+library(tmap)
+tmap_mode("plot")
+Nuse_efficiency_map_yr <- tm_shape(tau.multi_fert.forest_X_sp) +
+    tm_dots(col = "predictions", title = "NUE (kg Maize/Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year")
+Nuse_efficiency_map_yr
+tmap_save(Nuse_efficiency_map_yr, "figures/Nuse_efficiency_map_yr.png", width = 600, height = 600, asp = 0)
+
+```
+
+
+# Mapping Descriptive Statistics
+
+
+```{r}
+library(geodata)
+
+TZ <- gadm(country = "TZ", level = 1, path = tempdir())
+plot(TZ)
+
+TZ_sf= st_as_sf(TZ)
+TZ_sp=as_Spatial(TZ_sf)
+tau.multi_fert.forest_X_sp$region_name <- over(tau.multi_fert.forest_X_sp, TZ_sp[,"NAME_1"])
+
+
+# Summary by region and by year
+library(modelsummary)
+
+tau.multi_fert.forest_X_sp_dt <-tau.multi_fert.forest_X_sp@data
+
+tau.multi_fert.forest_X_sp_dt$region_name_final=tau.multi_fert.forest_X_sp_dt$region_name$NAME_1
+
+NUE_cont <- datasummary(Heading("region_name")*region_name_final~ Heading("N_obs") * N + Heading("percent") * Percent()+ predictions*(Mean+SD),data = tau.multi_fert.forest_X_sp_dt, output="data.frame")
+
+NUE_cont$N_obs=as.numeric(NUE_cont$N_obs)
+NUE_cont$Mean=as.numeric(NUE_cont$Mean)
+NUE_cont$SD=as.numeric(NUE_cont$SD)
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont', 'NUE_cont.csv')"
+        ),
+        reactable(
+            NUE_cont,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont"
+        )
+    )
+)
+
+
+# Remove regions with fewer observations than 50
+NUE_cont=subset(NUE_cont,NUE_cont$N_obs> 50)
+
+NUE_cont_sf=merge(TZ_sf,NUE_cont, by.x="NAME_1",by.y="region_name")
+
+# Map the 
+
+library(tmap)
+tmap_mode("plot")
+tm_shape(NUE_cont_sf) +
+  tm_polygons(col = "Mean", title = "Average NUE", style = "quantile") +
+  tm_layout(legend.outside = TRUE)
+
+
+
+
+
+```
+
+
+# Mapping results by year and region
+
+
+```{r}
+mean_na <- function(x) mean(x, na.rm = TRUE)
+sd_na <- function(x) SD(x, na.rm = TRUE)
+p25_na <- function(x) quantile(x, probs = 0.25, na.rm = TRUE)
+median_na <- function(x) median(x, na.rm = TRUE)
+p75_na <- function(x) quantile(x, probs = 0.75, na.rm = TRUE)
+
+NUE_cont_region_year <- datasummary(Factor(year)+Factor(region_name_final)~Heading("N obs") * N + Heading("%") * Percent() + (predictions) * (mean_na + sd_na), data = tau.multi_fert.forest_X_sp_dt, output = "data.frame")
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont_region_year', 'NUE_cont_region_year.csv')"
+        ),
+        reactable(
+            NUE_cont_region_year,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont_region_year"
+        )
+    )
+)
+
+
+# Mix
+library(data.table)
+tau.multi_fert.forest_X_sp_dt <- data.table (tau.multi_fert.forest_X_sp_dt)
+tau.multi_fert.forest_X_sp_dt$One=1
+
+NUE_cont_region_year_mix <- tau.multi_fert.forest_X_sp_dt[,.(
+  Mean=base::mean(predictions, na.rm=TRUE),
+  SD=sd(predictions, na.rm = TRUE),
+  N_obs=sum(One, na.rm = TRUE)
+  ), by =c("year","region_name_final")]
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont_region_year_mix', 'NUE_cont_region_year_mix.csv')"
+        ),
+        reactable(
+            NUE_cont_region_year_mix,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont_region_year_mix"
+        )
+    )
+)
+
+NUE_cont_region_year_mix=subset(NUE_cont_region_year_mix,NUE_cont_region_year_mix$N_obs> 10)
+
+NUE_cont_region_year_mix_sf=merge(TZ_sf,NUE_cont_region_year_mix, by.x="NAME_1",by.y="region_name_final")
+
+
+library(tmap)
+tmap_mode("plot")
+NUE_year_region <- tm_shape(NUE_cont_region_year_mix_sf) +
+    tm_dots(col = "Mean", title = "NUE (kg Maize/Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year")
+NUE_year_region
+tmap_save(NUE_year_region, "figures/NUE_year_region.png", width = 600, height = 600, asp = 0)
+
+
+```
+

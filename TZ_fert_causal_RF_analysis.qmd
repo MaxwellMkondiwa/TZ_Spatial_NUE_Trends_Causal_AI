@@ -230,18 +230,6 @@ library(ggplot2)
 #   geom_line(aes(x=N, y=Y, group=region, color=region))
 ```
 
-# Mapping Descriptive Statistics
-
-```{r}
-
-
-
-
-
-
-
-```
-
 # Conventional Production Function Approach
 
 ## Linear and non-linear parameter models: e.g., Quadratic
@@ -825,5 +813,149 @@ Nuse_efficiency_map_yr <- tm_shape(tau.multi_fert.forest_X_sp) +
     tm_facets("year")
 Nuse_efficiency_map_yr
 tmap_save(Nuse_efficiency_map_yr, "figures/Nuse_efficiency_map_yr.png", width = 600, height = 600, asp = 0)
+
+```
+
+# Mapping Descriptive Statistics
+
+```{r}
+library(geodata)
+
+TZ <- gadm(country = "TZ", level = 1, path = tempdir())
+plot(TZ)
+
+TZ_sf= st_as_sf(TZ)
+TZ_sp=as_Spatial(TZ_sf)
+tau.multi_fert.forest_X_sp$region_name <- over(tau.multi_fert.forest_X_sp, TZ_sp[,"NAME_1"])
+
+
+# Summary by region and by year
+library(modelsummary)
+
+tau.multi_fert.forest_X_sp_dt <-tau.multi_fert.forest_X_sp@data
+
+tau.multi_fert.forest_X_sp_dt$region_name_final=tau.multi_fert.forest_X_sp_dt$region_name$NAME_1
+
+NUE_cont <- datasummary(Heading("region_name")*region_name_final~ Heading("N_obs") * N + Heading("percent") * Percent()+ predictions*(Mean+SD),data = tau.multi_fert.forest_X_sp_dt, output="data.frame")
+
+NUE_cont$N_obs=as.numeric(NUE_cont$N_obs)
+NUE_cont$Mean=as.numeric(NUE_cont$Mean)
+NUE_cont$SD=as.numeric(NUE_cont$SD)
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont', 'NUE_cont.csv')"
+        ),
+        reactable(
+            NUE_cont,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont"
+        )
+    )
+)
+
+
+# Remove regions with fewer observations than 50
+NUE_cont=subset(NUE_cont,NUE_cont$N_obs> 50)
+
+NUE_cont_sf=merge(TZ_sf,NUE_cont, by.x="NAME_1",by.y="region_name")
+
+# Map the 
+
+library(tmap)
+tmap_mode("plot")
+tm_shape(NUE_cont_sf) +
+  tm_polygons(col = "Mean", title = "Average NUE", style = "quantile") +
+  tm_layout(legend.outside = TRUE)
+
+
+
+
+
+```
+
+# Mapping results by year and region
+
+```{r}
+mean_na <- function(x) mean(x, na.rm = TRUE)
+sd_na <- function(x) SD(x, na.rm = TRUE)
+p25_na <- function(x) quantile(x, probs = 0.25, na.rm = TRUE)
+median_na <- function(x) median(x, na.rm = TRUE)
+p75_na <- function(x) quantile(x, probs = 0.75, na.rm = TRUE)
+
+NUE_cont_region_year <- datasummary(Factor(year)+Factor(region_name_final)~Heading("N obs") * N + Heading("%") * Percent() + (predictions) * (mean_na + sd_na), data = tau.multi_fert.forest_X_sp_dt, output = "data.frame")
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont_region_year', 'NUE_cont_region_year.csv')"
+        ),
+        reactable(
+            NUE_cont_region_year,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont_region_year"
+        )
+    )
+)
+
+
+# Mix
+library(data.table)
+tau.multi_fert.forest_X_sp_dt <- data.table (tau.multi_fert.forest_X_sp_dt)
+tau.multi_fert.forest_X_sp_dt$One=1
+
+NUE_cont_region_year_mix <- tau.multi_fert.forest_X_sp_dt[,.(
+  Mean=base::mean(predictions, na.rm=TRUE),
+  SD=sd(predictions, na.rm = TRUE),
+  N_obs=sum(One, na.rm = TRUE)
+  ), by =c("year","region_name_final")]
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont_region_year_mix', 'NUE_cont_region_year_mix.csv')"
+        ),
+        reactable(
+            NUE_cont_region_year_mix,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont_region_year_mix"
+        )
+    )
+)
+
+NUE_cont_region_year_mix=subset(NUE_cont_region_year_mix,NUE_cont_region_year_mix$N_obs> 10)
+
+NUE_cont_region_year_mix_sf=merge(TZ_sf,NUE_cont_region_year_mix, by.x="NAME_1",by.y="region_name_final")
+
+
+library(tmap)
+tmap_mode("plot")
+NUE_year_region <- tm_shape(NUE_cont_region_year_mix_sf) +
+    tm_dots(col = "Mean", title = "NUE (kg Maize/Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year")
+NUE_year_region
+tmap_save(NUE_year_region, "figures/NUE_year_region.png", width = 600, height = 600, asp = 0)
+
 
 ```

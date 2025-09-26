@@ -23,7 +23,23 @@ execute:
 
 # Introduction
 
-This notebook provides R code for the paper on estimating the heterogenous treatment effects in Tanzania using non-parametric geoadditive and causal machine learning (ML) models. The analytics focus on addressing the following analysis questions:
+Amidst
+concerns of global agricultural productivity growth slowdown, there is an
+emerging consensus that crop productivity growth in some African countries has
+either been stagnant or slow in the past decade. This slowdown is attributed to
+degrading soil health and volatile weather patterns resulting in low partial
+productivity especially of nitrogen—hereafter nitrogen use efficiency (NUE) and
+falling profits. We contribute to this literature by using plot level
+nationally representative panel data (2008-2020) for Tanzania to examine if
+indeed NUEs and profits have been on a downward spiral. We combine a causal
+random forest model for heterogeneous treatment effects and a regional market
+economic surplus model to explore the economic implications of the NUE trends.
+
+The integrated framework is presented in the figure below.
+
+![](Framework.png)
+
+This notebook provides R code for Mkondiwa and Chamberlin (2004)(<https://hdl.handle.net/10883/35304>) on estimating the heterogenous treatment effects in Tanzania using non-parametric geoadditive and causal machine learning (ML) models.
 
 # Exploration
 
@@ -156,9 +172,9 @@ tz_lsms_panel$region=as.factor(tz_lsms_panel$region)
 tz_lsms_panel$year=as.factor(tz_lsms_panel$year)
 
 # By district and by year
-summary_table_by_year_region <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha+ ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
+summary_table_by_year_region <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + fert1_bin+N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha+ ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
 
-summary_table_by_year_region_mean <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ + N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha + ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
+summary_table_by_year_region_mean <- datasummary(Heading("N obs") * N + Heading("%") * Percent() + (yld_ +fert1_bin+ N_kgha_dum  +N_kgha_cond+ N_kgha + P_kgha+plotha + ncrops + hhmem + femhead + headeduc + arain_tot)*(mean_na) ~ year*region, data = tz_lsms_panel, output = "data.frame")
 
 
 summary_table_by_year_region_t=t(summary_table_by_year_region)
@@ -257,10 +273,88 @@ summary(baseline_ols)
 # Lm List by year
 baseline_ols_yearList <- lmList(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot|year,tz_lsms_panel)
 
-coef(baseline_ols_yearList)
+baseline_ols_yearList_est <- coef(baseline_ols_yearList)
+baseline_ols_yearList_est <-t(as.data.frame(baseline_ols_yearList_est))
+order_tab <-rep(1,9)
+order_tab <- as.data.frame(order_tab)
+baseline_ols_yearList_est_dt=cbind(baseline_ols_yearList_est,order_tab)
+
+
+baseline_ols_yearList_ci <- confint(baseline_ols_yearList)
+baseline_ols_yearList_ci_dt <-t(as.data.frame(baseline_ols_yearList_ci))
+order_tab <- rep(2:3,9)
+order_tab <- as.data.frame(order_tab)
+
+baseline_ols_yearList_ci_dt=cbind(baseline_ols_yearList_ci_dt,order_tab)
+
+baseline_ols_yearList_est_ci_dt=bind_rows(baseline_ols_yearList_est_dt,baseline_ols_yearList_ci_dt)
+
+write.csv(baseline_ols_yearList_est_ci_dt,"tables/baseline_ols_yearList_est_ci_dt.csv")
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('baseline_ols_yearList_est_ci_dt', 'baseline_ols_yearList_est_ci_dt.csv')"
+        ),
+        reactable(
+            baseline_ols_yearList_est_ci_dt,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "baseline_ols_yearList_est_ci_dt"
+        )
+    )
+)
+
+
+
+
+
 
 (ci <- confint(baseline_ols_yearList))
 plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+
+# Visreg
+library(visreg)
+
+tz_lsms_panel_2008 <- subset(tz_lsms_panel,tz_lsms_panel$year=="2008")
+tz_lsms_panel_2010 <- subset(tz_lsms_panel,tz_lsms_panel$year=="2010")
+tz_lsms_panel_2012 <- subset(tz_lsms_panel,tz_lsms_panel$year=="2012")
+tz_lsms_panel_2014 <- subset(tz_lsms_panel,tz_lsms_panel$year=="2014")
+tz_lsms_panel_2020 <- subset(tz_lsms_panel,tz_lsms_panel$year=="2020")
+
+baseline_ols_2008 <- lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2008)
+
+baseline_ols_2010 <- lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2010)
+
+baseline_ols_2012 <- lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2012)
+
+baseline_ols_2014 <- lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2014)
+
+baseline_ols_2020 <- lm(yld_~N_kgha+plotha+P_kgha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2020)
+
+baseline_ols_2008_v <-visreg(baseline_ols_2008, "N_kgha", plot=FALSE)
+baseline_ols_2010_v <-visreg(baseline_ols_2010, "N_kgha", plot=FALSE)
+baseline_ols_2012_v <-visreg(baseline_ols_2012, "N_kgha", plot=FALSE)
+baseline_ols_2014_v <-visreg(baseline_ols_2014, "N_kgha", plot=FALSE)
+baseline_ols_2020_v <-visreg(baseline_ols_2020, "N_kgha", plot=FALSE)
+
+
+baseline_ols_all_plot <- visregList(baseline_ols_2008_v,baseline_ols_2010_v,baseline_ols_2012_v,baseline_ols_2014_v,baseline_ols_2020_v, collapse=TRUE,
+                  labels=c("2008","2010","2012","2014","2020"))
+op <- par(mfrow=c(1,5))
+par(op)
+
+plot(baseline_ols_all_plot,ylab="Maize yield (kg per ha)",xlab="Applied nitrogen (kg per ha)", ylim=c(0,3000), main="Linear",partial=FALSE,rug=FALSE)
+
+
+
 
 
 ## LINEAR PLATEAU
@@ -285,32 +379,216 @@ library(modelsummary)
 modelplot(baseline_quad)
 
 # Lm List by year
-baseline_quad_lmList <- lmList(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc+arain_tot|year,tz_lsms_panel)
+baseline_quad_lmList <- lmList(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot|year,tz_lsms_panel)
 
 coef(baseline_quad_lmList )
 
 (ci <- confint(baseline_quad_lmList ))
 plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
 
-## with interactions
+
+baseline_quad_lmList_est <- coef(baseline_quad_lmList)
+baseline_quad_lmList_est <-t(as.data.frame(baseline_quad_lmList_est))
+order_tab <-rep(1,11)
+order_tab <- as.data.frame(order_tab)
+baseline_quad_lmList_est_dt=cbind(baseline_quad_lmList_est,order_tab)
+
+
+baseline_quad_lmList_ci <- confint(baseline_quad_lmList)
+baseline_quad_lmList_ci_dt <-t(as.data.frame(baseline_quad_lmList_ci))
+order_tab <- rep(2:3,11)
+order_tab <- as.data.frame(order_tab)
+
+baseline_quad_lmList_ci_dt=cbind(baseline_quad_lmList_ci_dt,order_tab)
+
+baseline_quad_lmList_est_ci_dt=bind_rows(baseline_quad_lmList_est_dt,baseline_quad_lmList_ci_dt)
+
+write.csv(baseline_quad_lmList_est_ci_dt,"tables/baseline_quad_lmList_est_ci_dt.csv")
+
+## Visreg
+library(visreg)
+
+baseline_quad_2008 <- lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2008)
+
+baseline_quad_2010 <- lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2010)
+
+baseline_quad_2012 <- lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2012)
+
+baseline_quad_2014 <- lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2014)
+
+baseline_quad_2020 <- lm(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot,data=tz_lsms_panel_2020)
+
+baseline_quad_2008_v <-visreg(baseline_quad_2008, "N_kgha", plot=FALSE)
+baseline_quad_2010_v <-visreg(baseline_quad_2010, "N_kgha", plot=FALSE)
+baseline_quad_2012_v <-visreg(baseline_quad_2012, "N_kgha", plot=FALSE)
+baseline_quad_2014_v <-visreg(baseline_quad_2014, "N_kgha", plot=FALSE)
+baseline_quad_2020_v <-visreg(baseline_quad_2020, "N_kgha", plot=FALSE)
+
+
+baseline_quad_all_plot <- visregList(baseline_quad_2008_v,baseline_quad_2010_v,baseline_quad_2012_v,baseline_quad_2014_v,baseline_quad_2020_v, collapse=TRUE,
+                  labels=c("2008","2010","2012","2014","2020"))
+op <- par(mfrow=c(1,5))
+par(op)
+
+plot(baseline_quad_all_plot,ylab="Maize yield (kg per ha)",xlab="Applied nitrogen (kg per ha)", ylim=c(0,3000), main="Quadratic",partial=FALSE,rug=FALSE)
+
+
+
+
+
+## with interactionswith rainfall
 # Lm List by year
-baseline_quad_lmList_inter <- lmList(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc|year,tz_lsms_panel)
+baseline_quad_lmList_inter <- lmList(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc|year,tz_lsms_panel)
 
 coef(baseline_quad_lmList_inter )
 
 (ci <- confint(baseline_quad_lmList_inter))
 plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
 
+baseline_quad_lmList_inter_est <- coef(baseline_quad_lmList_inter)
+baseline_quad_lmList_inter_est <-t(as.data.frame(baseline_quad_lmList_inter_est))
+order_tab <-rep(1,13)
+order_tab <- as.data.frame(order_tab)
+baseline_quad_lmList_inter_est_dt=cbind(baseline_quad_lmList_inter_est,order_tab)
+
+
+baseline_quad_lmList_inter_ci <- confint(baseline_quad_lmList_inter)
+baseline_quad_lmList_inter_ci_dt <-t(as.data.frame(baseline_quad_lmList_inter_ci))
+order_tab <- rep(2:3,13)
+order_tab <- as.data.frame(order_tab)
+
+baseline_quad_lmList_inter_ci_dt=cbind(baseline_quad_lmList_inter_ci_dt,order_tab)
+
+baseline_quad_lmList_inter_est_ci_dt=bind_rows(baseline_quad_lmList_inter_est_dt,baseline_quad_lmList_inter_ci_dt)
+
+write.csv(baseline_quad_lmList_inter_est_ci_dt,"tables/baseline_quad_lmList_inter_est_ci_dt.csv")
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('baseline_quad_lmList_inter_est_ci_dt', 'baseline_quad_lmList_inter_est_ci_dt.csv')"
+        ),
+        reactable(
+            baseline_quad_lmList_inter_est_ci_dt,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "baseline_quad_lmList_inter_est_ci_dt"
+        )
+    )
+)
+
+
+## Visreg
+library(visreg)
+
+baseline_quad_inter_2008 <- lm(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc,data=tz_lsms_panel_2008)
+
+baseline_quad_inter_2010 <- lm(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc,data=tz_lsms_panel_2010)
+
+baseline_quad_inter_2012 <- lm(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc,data=tz_lsms_panel_2012)
+
+baseline_quad_inter_2014 <- lm(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc,data=tz_lsms_panel_2014)
+
+baseline_quad_inter_2020 <- lm(yld_~N_kgha*arain_tot+I(N_kgha^2)*arain_tot+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc,data=tz_lsms_panel_2020)
+
+visreg2d(baseline_quad_inter_2008, "N_kgha", "arain_tot",ylab="Rainfall (mm)",xlab="Nitrogen (kg per ha)", main="2008")
+
+
+visreg2d(baseline_quad_inter_2010, "N_kgha", "arain_tot",ylab="Rainfall (mm)",xlab="Nitrogen (kg per ha)", main="2010")
+
+
+visreg2d(baseline_quad_inter_2012, "N_kgha", "arain_tot",ylab="Rainfall (mm)",xlab="Nitrogen (kg per ha)", main="2012")
+
+visreg2d(baseline_quad_inter_2014, "N_kgha", "arain_tot",ylab="Rainfall (mm)",xlab="Nitrogen (kg per ha)", main="2014")
+
+
+visreg2d(baseline_quad_inter_2020, "N_kgha", "arain_tot",ylab="Rainfall (mm)",xlab="Nitrogen (kg per ha)", main="2020")
+
+
 
 # Soil properties Interacted with soils 
-baseline_quad_lmList_inter_soil <- lmList(yld_~N_kgha+I(N_kgha^2)+P_kgha+I(P_kgha^2)+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm|year,tz_lsms_panel)
-
-
+baseline_quad_lmList_inter_soil <- lmList(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm|year,tz_lsms_panel)
 
 coef(baseline_quad_lmList_inter_soil )
 
 (ci <- confint(baseline_quad_lmList_inter_soil))
 plot(ci,cex=2, cex.lab=3, xlab="Maize yield (kg/ha) response", ylab="Year")
+
+baseline_quad_lmList_inter_soil_est <- coef(baseline_quad_lmList_inter_soil)
+baseline_quad_lmList_inter_soil_est <-t(as.data.frame(baseline_quad_lmList_inter_soil_est))
+order_tab <-rep(1,19)
+order_tab <- as.data.frame(order_tab)
+baseline_quad_lmList_inter_soil_est_dt=cbind(baseline_quad_lmList_inter_soil_est,order_tab)
+
+
+baseline_quad_lmList_inter_soil_ci <- confint(baseline_quad_lmList_inter_soil)
+baseline_quad_lmList_inter_soil_ci_dt <-t(as.data.frame(baseline_quad_lmList_inter_soil_ci))
+order_tab <- rep(2:3,19)
+order_tab <- as.data.frame(order_tab)
+
+baseline_quad_lmList_inter_soil_ci_dt=cbind(baseline_quad_lmList_inter_soil_ci_dt,order_tab)
+
+baseline_quad_lmList_inter_soil_est_ci_dt=bind_rows(baseline_quad_lmList_inter_soil_est_dt,baseline_quad_lmList_inter_soil_ci_dt)
+
+write.csv(baseline_quad_lmList_inter_soil_est_ci_dt,"tables/baseline_quad_lmList_inter_soil_est_ci_dt.csv")
+
+
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('baseline_quad_lmList_inter_soil_est_ci_dt', 'baseline_quad_lmList_inter_soil_est_ci_dt.csv')"
+        ),
+        reactable(
+            baseline_quad_lmList_inter_soil_est_ci_dt,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "baseline_quad_lmList_inter_soil_est_ci_dt"
+        )
+    )
+)
+
+
+## Visreg
+library(visreg)
+
+baseline_quad_inter_soils_2008 <- lm(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,data=tz_lsms_panel_2008)
+
+baseline_quad_inter_soils_2010 <- lm(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,data=tz_lsms_panel_2010)
+
+baseline_quad_inter_soils_2012 <- lm(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,data=tz_lsms_panel_2012)
+
+baseline_quad_inter_soils_2014 <- lm(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,data=tz_lsms_panel_2014)
+
+baseline_quad_inter_soils_2020 <- lm(yld_~N_kgha*soc_5_15cm+I(N_kgha^2)+P_kgha+I(P_kgha^2)+plotha+ncrops+hhmem+femhead+headeduc+arain_tot+population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,data=tz_lsms_panel_2020)
+
+visreg2d(baseline_quad_inter_soils_2008, "N_kgha", "soc_5_15cm",ylab="Soil carbon (g per kg)",xlab="Nitrogen (kg per ha)", main="2008")
+
+
+visreg2d(baseline_quad_inter_soils_2010, "N_kgha", "soc_5_15cm",ylab="Soil carbon (g per kg)",xlab="Nitrogen (kg per ha)", main="2010")
+
+
+visreg2d(baseline_quad_inter_soils_2012, "N_kgha", "soc_5_15cm",ylab="Soil carbon (g per kg)",xlab="Nitrogen (kg per ha)", main="2012")
+
+
+visreg2d(baseline_quad_inter_soils_2014, "N_kgha", "soc_5_15cm",ylab="Soil carbon (g per kg)",xlab="Nitrogen (kg per ha)", main="2014")
+
+visreg2d(baseline_quad_inter_soils_2020, "N_kgha", "soc_5_15cm",ylab="Soil carbon (g per kg)",xlab="Nitrogen (kg per ha)", main="2020")
+
+
+
+
+
 
 
 
@@ -448,8 +726,13 @@ f1 <- yld_~N_kgha + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arai
 
 b1 <- bamlss(f1, data = tz_lsms_panel, family = "gaussian", n.iter = 12000, burnin = 2000, thin = 10)
 
+b1 <- gam(f1, data = tz_lsms_panel, family = "gaussian", n.iter = 12000, burnin = 2000, thin = 10)
 
 summary(b1)
+
+
+library(visreg)
+visreg(b1,"N_kgha")
 
 # Nonlinear
 # f2=yld_~s(N_kgha)+s(plotha)+s(P_kgha)+s(ncrops)+s(hhmem)+femhead+headeduc+s(arain_tot)+ti(region)+ti(year)
@@ -460,7 +743,7 @@ summary(b1)
 # summary(b2)
 # plot(b2, ask=FALSE)
 # #
-
+library(bamlss)
 f3 <- list(
     yld_ ~ s(N_kgha, by = year) + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot +population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm,
 
@@ -476,6 +759,20 @@ summary(b3)
 plot(b3, cex = 2.5, model = "mu", term = "s(N_kgha,by=year)")
 plot(b3, cex = 2.5, model = "sigma", term = "s(N_kgha,by=year")
 
+# GAM model
+f_gam <-  yld_ ~ s(N_kgha, by = year,sp=0.1) + plotha + P_kgha + ncrops + hhmem + femhead + headeduc + arain_tot +population_density+wc2.1_30s_elev+sand_0_5cm+nitrogen_0_5cm+soc_5_15cm+ ECN_5_15cm+pH_0_5cm
+    
+b_gam <- gam(f_gam,data = tz_lsms_panel)
+
+previous_theme <- theme_set(theme_bw())
+visreg_polynomial_plot=visreg(b_gam,"N_kgha","year",gg=TRUE,xlab="Applied nitrogen (kg per ha)", ylab="Maize yield (kg per ha)",partial=FALSE,rug=FALSE)
+visreg_polynomial_plot
+ggsave("figures/visreg_polynomial_plot.png",width=4.16,height=3.16)
+
+dev.off()
+visreg2d(b_gam,"year", "N_kgha", plot.type="image")
+
+
 ```
 
 # Causal RF approach
@@ -486,7 +783,7 @@ plot(b3, cex = 2.5, model = "sigma", term = "s(N_kgha,by=year")
 library(grf)
 library(policytree)
 
-tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin", "yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified"))
+tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin","yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified"))
 
 tz_lsms_panel_estim_fert$region <- as.numeric(tz_lsms_panel_estim_fert$region)
 tz_lsms_panel_estim_fert$year <- as.numeric(tz_lsms_panel_estim_fert$year)
@@ -544,7 +841,7 @@ multi_fert_binary_calibration
 library(grf)
 library(policytree)
 
-tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin", "yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified"))
+tz_lsms_panel_estim_fert <- subset(tz_lsms_panel, select = c("fert1_bin","yld_", "N_kgha", "plotha", "P_kgha", "ncrops", "hhmem", "femhead", "headeduc", "arain_tot", "population_density", "wc2.1_30s_elev", "sand_0_5cm", "nitrogen_0_5cm", "soc_5_15cm", "ECN_5_15cm", "pH_0_5cm", "region", "year", "lat_modified", "lon_modified","maipkg_usd","Npkg_usd"))
 
 tz_lsms_panel_estim_fert$region <- as.numeric(tz_lsms_panel_estim_fert$region)
 tz_lsms_panel_estim_fert$year <- as.numeric(tz_lsms_panel_estim_fert$year)
@@ -605,7 +902,7 @@ tau.multi_fert.forest_continuous <- as.data.frame(tau.multi_fert.forest_continuo
 
 tau.multi_fert.forest_X <- data.frame(tz_lsms_panel_estim_fert, tau.multi_fert.forest_continuous)
 
-ggplot(tau.multi_fert.forest_X, aes(x = predictions, y = "", fill = factor(stat(quantile)))) +
+NUE_Density=ggplot(tau.multi_fert.forest_X, aes(x = predictions, y = "", fill = factor(stat(quantile)))) +
     stat_density_ridges(
         geom = "density_ridges_gradient", calc_ecdf = TRUE,
         quantiles = 4, quantile_lines = TRUE
@@ -615,6 +912,10 @@ ggplot(tau.multi_fert.forest_X, aes(x = predictions, y = "", fill = factor(stat(
     expand_limits(y = 1) +
     theme_bw(base_size = 16) +
     labs(x = "N use effect", y = "Density")
+NUE_Density
+ggsave("figures/NUE_Density.png", dpi=300, width=5.16,height=4.16)
+
+
 
 ```
 
@@ -631,7 +932,7 @@ NperHa_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.fore
 previous_theme <- theme_set(theme_bw(base_size = 16))
 NperHa_CATE_N_plot
 
-Plotsize_CATE_N_plot <- ggplot(tau.multi_fert.forest_X, aes(plotha, predictions)) +
+Plotsize_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$plotha > 0), aes(plotha, predictions)) +
     geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
     labs(x = "Plot size (ha)", y = "N use efficiency")
 previous_theme <- theme_set(theme_bw(base_size = 16))
@@ -651,12 +952,20 @@ Hhmem_CATE_N_plot
 
 
 # By year
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==1]=2008
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==2]=2010
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==3]=2012
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==4]=2014
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==5]=2020
+
+tau.multi_fert.forest_X$year_det=as.numeric(tau.multi_fert.forest_X$year_det)
+
 NperHa_CATE_N_plot_yr <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$N_kgha > 0), aes(N_kgha, predictions)) +
     geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
     lims(x = c(0, 100)) +
     labs(x = "Applied N per ha", y = "N use efficiency") +
     theme_bw(base_size = 16) +
-    facet_wrap(~year)
+    facet_wrap(~year_det)
 
 NperHa_CATE_N_plot_yr
 
@@ -665,10 +974,12 @@ NperHa_CATE_N_plot_yr
 library(ggplot2)
 soc_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$soc_5_15cm > 0), aes(soc_5_15cm, predictions)) +
     geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
-    labs(x = "Soil organic carbon (%)", y = "N use efficiency")
+    labs(x = "Soil organic carbon (g per kg)", y = "N use efficiency")
 
 previous_theme <- theme_set(theme_bw(base_size = 16))
 soc_CATE_N_plot
+ggsave("figures/soc_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
+
 
 # By soil sand
 library(ggplot2)
@@ -678,6 +989,7 @@ sand_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest
 
 previous_theme <- theme_set(theme_bw(base_size = 16))
 sand_CATE_N_plot
+ggsave("figures/sand_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
 
 # Electrical conductivity
 library(ggplot2)
@@ -687,8 +999,31 @@ soil_elec_cond_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_f
 
 previous_theme <- theme_set(theme_bw(base_size = 16))
 soil_elec_cond_CATE_N_plot
+ggsave("figures/soil_elec_cond_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
 
-# By density
+# pH
+library(ggplot2)
+soil_pH_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$pH_0_5cm > 0), aes(pH_0_5cm, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Soil pH", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+soil_pH_CATE_N_plot
+ggsave("figures/soil_pH_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
+
+
+# soil nitrogen
+library(ggplot2)
+soil_nitrogen_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$nitrogen_0_5cm > 0), aes(nitrogen_0_5cm, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Soil nitrogen (g per kg)", y = "N use efficiency")
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+soil_nitrogen_CATE_N_plot
+ggsave("figures/soil_nitrogen_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
+
+
+# By population density
 library(ggplot2)
 pop_density_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$population_density > 0), aes(population_density, predictions)) +
     geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
@@ -696,6 +1031,7 @@ pop_density_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert
 
 previous_theme <- theme_set(theme_bw(base_size = 16))
 pop_density_CATE_N_plot
+ggsave("figures/pop_density_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
 
 # By elevation
 
@@ -707,6 +1043,22 @@ elev_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest
 previous_theme <- theme_set(theme_bw(base_size = 16))
 elev_CATE_N_plot
 
+ggsave("figures/elev_CATE_N_plot.png", dpi=300, width=4.16,height=4.16)
+
+
+# By rainfall
+
+
+library(ggplot2)
+rainfall_CATE_N_plot <- ggplot(subset(tau.multi_fert.forest_X, tau.multi_fert.forest_X$arain_tot > 0), aes(arain_tot, predictions)) +
+    geom_smooth(method = "loess", formula = y ~ x, col = "darkblue") +
+    labs(x = "Rainfall (mm)", y = "N use efficiency")+
+    facet_wrap(~year_det)
+
+
+previous_theme <- theme_set(theme_bw(base_size = 16))
+rainfall_CATE_N_plot
+
 
 ```
 
@@ -715,12 +1067,38 @@ elev_CATE_N_plot
 ## Causal RF
 
 ```{r}
-Year_CATE_N_plot=ggplot(tau.multi_fert.forest_X,aes(year,predictions))+
+
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==1]=2008
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==2]=2010
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==3]=2012
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==4]=2014
+tau.multi_fert.forest_X$year_det[tau.multi_fert.forest_X$year==5]=2020
+
+tau.multi_fert.forest_X$year_det=as.numeric(tau.multi_fert.forest_X$year_det)
+
+Year_CATE_N_plot=ggplot(tau.multi_fert.forest_X,aes(year_det,predictions))+
   geom_smooth(method="loess",formula=y~x,col="darkblue")+
-  labs(x="Year",y="N use efficiency")
+  labs(x="Year",y="N use efficiency")+
+  scale_x_continuous(breaks = c(2008, 2010, 2012,2014,2020))
 previous_theme <- theme_set(theme_bw())
 Year_CATE_N_plot
 
+ggsave("figures/Year_CATE_N_plot.png", dpi=300, width=5.16,height=4.16)
+
+library(ggpubr) 
+library(tidyverse) 
+
+#Sowing dates 
+
+Year_CATE_N_Errorplot=
+  tau.multi_fert.forest_X %>% 
+  drop_na(year_det) %>%
+  ggerrorplot(x = "year_det", y = "predictions",add = "mean", error.plot = "errorbar", color="black",size=1, ggtheme=theme_bw())+
+  labs(x="Year",y="N use efficiency")+
+  theme_bw(base_size = 16)
+Year_CATE_N_Errorplot
+
+ggsave("figures/Year_CATE_N_Errorplot.png", dpi=300, width=5.16,height=4.16)
 
 ```
 
@@ -826,7 +1204,18 @@ plot(TZ)
 
 TZ_sf= st_as_sf(TZ)
 TZ_sp=as_Spatial(TZ_sf)
+
+
+library(tmap)
+
+tm_shape(TZ_sp) + 
+  tm_polygons(col="grey",legend.show = F,border.col="white")+
+  tmap_options(max.categories = 31)+
+  tm_text("NAME_1", size = 0.7)
+
+
 tau.multi_fert.forest_X_sp$region_name <- over(tau.multi_fert.forest_X_sp, TZ_sp[,"NAME_1"])
+
 
 
 # Summary by region and by year
@@ -881,7 +1270,7 @@ tm_shape(NUE_cont_sf) +
 
 ```
 
-# Mapping results by year and region
+# Mapping NUEs by year and region
 
 ```{r}
 mean_na <- function(x) mean(x, na.rm = TRUE)
@@ -920,9 +1309,20 @@ tau.multi_fert.forest_X_sp_dt$One=1
 NUE_cont_region_year_mix <- tau.multi_fert.forest_X_sp_dt[,.(
   Mean=base::mean(predictions, na.rm=TRUE),
   SD=sd(predictions, na.rm = TRUE),
-  N_obs=sum(One, na.rm = TRUE)
+  N_obs=sum(One, na.rm = TRUE),
+  Maize_price_USD=base::mean(maipkg_usd, na.rm=TRUE),
+  N_price_USD=base::mean(Npkg_usd, na.rm=TRUE),
+  fert1_bin= base::mean(Npkg_usd, na.rm=TRUE),
+  yld = base::mean(yld_, na.rm=TRUE),
+  N_kgha = base::mean(N_kgha, na.rm=TRUE)
+  
   ), by =c("year","region_name_final")]
 
+NUE_cont_region_year_mix$year_det[NUE_cont_region_year_mix$year==1]=2008
+NUE_cont_region_year_mix$year_det[NUE_cont_region_year_mix$year==2]=2010
+NUE_cont_region_year_mix$year_det[NUE_cont_region_year_mix$year==3]=2012
+NUE_cont_region_year_mix$year_det[NUE_cont_region_year_mix$year==4]=2014
+NUE_cont_region_year_mix$year_det[NUE_cont_region_year_mix$year==5]=2020
 
 library(reactable)
 library(htmltools)
@@ -948,14 +1348,369 @@ NUE_cont_region_year_mix=subset(NUE_cont_region_year_mix,NUE_cont_region_year_mi
 NUE_cont_region_year_mix_sf=merge(TZ_sf,NUE_cont_region_year_mix, by.x="NAME_1",by.y="region_name_final")
 
 
+
 library(tmap)
 tmap_mode("plot")
 NUE_year_region <- tm_shape(NUE_cont_region_year_mix_sf) +
-    tm_dots(col = "Mean", title = "NUE (kg Maize/Kg N)", style = "quantile") +
+    tm_polygons(col = "Mean", title = "NUE (kg Maize/Kg N)", style = "quantile") +
     tm_layout(legend.outside = TRUE) +
-    tm_facets("year")
+    tm_facets("year_det")
 NUE_year_region
 tmap_save(NUE_year_region, "figures/NUE_year_region.png", width = 600, height = 600, asp = 0)
 
 
+library(tmap)
+tmap_mode("plot")
+Yield_year_region <- tm_shape(NUE_cont_region_year_mix_sf) +
+    tm_polygons(col = "yld", title = "Maize yield (kg/ha)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year_det")
+Yield_year_region
+tmap_save(Yield_year_region, "figures/Yield_year_region.png", width = 600, height = 600, asp = 0)
+
 ```
+
+# Mapping partial profits by year and region
+
+```{r}
+library(rio)
+
+Maize_Prices_Tanzania_2021_dt_region <-import("admin_data/Maize_Prices_Tanzania_2021_dt_region.csv")
+
+Maize_Prices_Tanzania_2021_dt_region <-subset(Maize_Prices_Tanzania_2021_dt_region,select=c("Region","Maize_max_price_per_kg","Maize_min_price_per_kg"))
+
+Urea_Prices_Tanzania_sp_dt_region <-import ("admin_data/Urea_Prices_Tanzania_sp_dt_region.csv")
+
+Urea_Prices_Tanzania_sp_dt_region <-subset(Urea_Prices_Tanzania_sp_dt_region,select=c("region_name_final","mean_N_price","SD_N_price"))
+
+urea_maize_prices_region <- merge(Maize_Prices_Tanzania_2021_dt_region,Urea_Prices_Tanzania_sp_dt_region,by.x="Region",by.y="region_name_final")
+
+NUE_cont_region_year_mix_sf_prices=merge(NUE_cont_region_year_mix_sf,urea_maize_prices_region,by.x="NAME_1",by.y="Region")
+
+NUE_cont_region_year_mix_sf_prices$maize_rev_from_N = NUE_cont_region_year_mix_sf_prices$Mean*NUE_cont_region_year_mix_sf_prices$Maize_max_price_per_kg
+
+NUE_cont_region_year_mix_sf_prices$Survey_USD_maize_rev_from_N = NUE_cont_region_year_mix_sf_prices$Mean*NUE_cont_region_year_mix_sf_prices$Maize_price_USD
+
+NUE_cont_region_year_mix_sf_prices$partial_profit= NUE_cont_region_year_mix_sf_prices$maize_rev_from_N-NUE_cont_region_year_mix_sf_prices$mean_N_price
+
+NUE_cont_region_year_mix_sf_prices$Survey_USD_partial_profit= NUE_cont_region_year_mix_sf_prices$Survey_USD_maize_rev_from_N-NUE_cont_region_year_mix_sf_prices$N_price_USD
+
+NUE_cont_region_year_mix_sf_prices$vcr=NUE_cont_region_year_mix_sf_prices$maize_rev_from_N/NUE_cont_region_year_mix_sf_prices$mean_N_price
+
+  
+NUE_cont_region_year_mix_sf_prices$Survey_USD_vcr=NUE_cont_region_year_mix_sf_prices$Survey_USD_maize_rev_from_N/NUE_cont_region_year_mix_sf_prices$N_price_USD
+
+library(sf)
+
+NUE_cont_region_year_mix_sf_prices_sp <- as_Spatial(NUE_cont_region_year_mix_sf_prices)
+
+NUE_cont_region_year_mix_sf_prices_sp_dt <- NUE_cont_region_year_mix_sf_prices_sp@data
+
+NUE_cont_region_year_mix_sf_prices_sp_dt <-as.data.frame(NUE_cont_region_year_mix_sf_prices_sp_dt)
+
+# Export the table
+library(reactable)
+library(htmltools)
+library(fontawesome)
+
+
+htmltools::browsable(
+    tagList(
+        tags$button(
+            tagList(fontawesome::fa("download"), "Download as CSV"),
+            onclick = "Reactable.downloadDataCSV('NUE_cont_region_year_mix_sf_prices_sp_dt', 'NUE_cont_region_year_mix_sf_prices_sp_dt.csv')"
+        ),
+        reactable(
+            NUE_cont_region_year_mix_sf_prices_sp_dt,
+            searchable = TRUE,
+            defaultPageSize = 38,
+            elementId = "NUE_cont_region_year_mix_sf_prices_sp_dt"
+        )
+    )
+)
+
+# N price 
+library(tmap)
+tmap_mode("plot")
+N_price_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "mean_N_price", title = "Nitrogen price (TZS/kg)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) 
+N_price_year_region
+tmap_save(N_price_year_region, "figures/N_price_year_region.png", width = 600, height = 600)
+
+library(tmap)
+tmap_mode("plot")
+Survey_USD_N_price_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "N_price_USD", title = "Nitrogen price (USD/kg)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) 
+Survey_USD_N_price_year_region
+tmap_save(Survey_USD_N_price_year_region, "figures/Survey_USD_N_price_year_region.png", width = 600, height = 600)
+
+# Maize output price 
+library(tmap)
+tmap_mode("plot")
+maize_price_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "Maize_max_price_per_kg", title = "2021 maize prices (TZS/kg)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) 
+maize_price_year_region
+tmap_save(maize_price_year_region, "figures/maize_price_year_region.png", width = 600, height = 600)
+
+library(tmap)
+tmap_mode("plot")
+Survey_USD_maize_price_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "Maize_price_USD", title = "Maize prices (USD/kg)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) 
+Survey_USD_maize_price_year_region
+tmap_save(Survey_USD_maize_price_year_region, "figures/Survey_USD_maize_price_year_region.png", width = 600, height = 600)
+
+# Value cost ratio
+
+
+library(tmap)
+tmap_mode("plot")
+vcr_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "vcr", title = "Maize value-cost ratio (VCR)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year_det")
+vcr_year_region
+tmap_save(vcr_year_region, "figures/vcr_year_region.png", width = 600, height = 600)
+
+library(tmap)
+tmap_mode("plot")
+Survey_USD_vcr_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "Survey_USD_vcr", title = "Maize value-cost ratio (VCR)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year_det")
+Survey_USD_vcr_year_region
+tmap_save(Survey_USD_vcr_year_region, "figures/Survey_USD_vcr_year_region.png", width = 600, height = 600)
+
+# Partial profit to nitrogen application
+
+library(tmap)
+tmap_mode("plot")
+partial_prof_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "partial_profit", title = "Partial profit (TZS /Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year_det")
+partial_prof_year_region
+tmap_save(partial_prof_year_region, "figures/partial_prof_year_region.png", width = 600, height = 600)
+
+library(tmap)
+tmap_mode("plot")
+Survey_USD_partial_prof_year_region <- tm_shape(NUE_cont_region_year_mix_sf_prices) +
+    tm_polygons(col = "Survey_USD_partial_profit", title = "Partial profit (USD /Kg N)", style = "quantile") +
+    tm_layout(legend.outside = TRUE) +
+    tm_facets("year_det")
+Survey_USD_partial_prof_year_region
+tmap_save(Survey_USD_partial_prof_year_region, "figures/Survey_USD_partial_prof_year_region.png", width = 600, height = 600)
+
+
+```
+
+# Spatially Gridded Profitability Analysis
+
+## Spatially gridded NUEs
+
+```{r}
+
+# Gridded yield gains
+
+
+lon <- tau.multi_fert.forest_X$lon_modified
+lon <- as.data.frame(lon)
+lat <- tau.multi_fert.forest_X$lat_modified
+lat <- as.data.frame(lat)
+
+
+tau.multi_fert.forest_X <- cbind(lon, lat, tau.multi_fert.forest_X)
+
+library(sp)
+tau.multi_fert.forest_X_sp_kr <-
+    SpatialPointsDataFrame(cbind(tau.multi_fert.forest_X$lon, tau.multi_fert.forest_X$lat), data = tau.multi_fert.forest_X, proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+# tau.multi_fert.forest_X_sp_kr_2008 =subset(tau.multi_fert.forest_X_sp_kr,tau.multi_fert.forest_X_sp_kr$year==1)
+
+# 2008 prediction 
+library(bamlss)
+set.seed(111)
+f <- predictions ~  s(lon,lat)
+
+## estimate model.
+b <- bamlss(f, data = tau.multi_fert.forest_X_sp_kr)
+
+plot(b)
+
+# Boundary map
+library(sf)
+library(geodata)
+set.seed(111)
+
+TZ <- gadm(country = "TZ", level = 0, path = tempdir())
+plot(TZ)
+
+TZ_sf= st_as_sf(TZ)
+TZ_sp=as_Spatial(TZ_sf)
+
+TZ_sf_dis <- st_union(TZ_sf)
+plot(TZ_sf_dis)
+
+
+# Predict
+elevationglobal_geodata <- elevation_global(2.5, path =tempdir())
+
+elevationglobal_geodata_aoi <- terra::crop(elevationglobal_geodata,TZ_sf_dis)
+
+library(raster)
+elevationglobal_geodata_aoi <- raster(elevationglobal_geodata_aoi)
+
+plot(elevationglobal_geodata_aoi)
+
+pred <- SpatialPoints(elevationglobal_geodata_aoi)@coords
+pred <- as.data.frame(pred)
+
+names(pred)[1:2] <- c("lon", "lat")
+
+pred <- pred %>% drop_na()
+
+library(sp)
+pred_sp <-
+    SpatialPointsDataFrame(cbind(pred$lon, pred$lat), data = pred, proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+
+yield_gain_hat <- predict(b, newdata = pred)
+
+yield_gain_hat <- as.data.frame(yield_gain_hat)
+
+pred_yield_gain_hat <- cbind(pred, yield_gain_hat )
+
+pred_yield_gain_hat$sigma <- NULL
+library(terra)
+
+yield_gain_ras <- rast(pred_yield_gain_hat, type = "xyz")
+plot(yield_gain_ras )
+
+library(raster)
+yield_gain_ras2 <- raster(yield_gain_ras)
+
+library(sf)
+TZ_sf_dis_sp <- as_Spatial(TZ_sf_dis)
+yield_gain_ras2 <- mask(yield_gain_ras2, TZ_sf_dis_sp)
+plot(yield_gain_ras2, main = "Yield gains to N")
+
+library(rasterVis)
+
+levelplot(yield_gain_ras2, layers = 1, margin = list(FUN = 'median'), contour=TRUE)
+
+## 
+library(tmap)
+yield_gain_raster_map=tm_shape(yield_gain_ras2) +
+  tm_raster(title = "Nitrogen Use Efficiency",style = "cont", palette = "viridis")+
+  tm_legend(position = c("right", "top"),legend.title.size=1.2,legend.text.size=1.2)
+yield_gain_raster_map
+
+tmap_save(yield_gain_raster_map,"figures/yield_gain_raster_map.png", dpi=300,width=4.88,height = 4.16)
+
+
+```
+
+## VCR predictions
+
+```{r}
+# library(bamlss)
+# set.seed(111)
+# f <- vcr ~  s(lon,lat,year)
+# 
+# ## estimate model.
+# b <- bamlss(f, data = tau.multi_fert.forest_X_sp_kr)
+# 
+# plot(b)
+# 
+# # Boundary map
+# library(sf)
+# library(geodata)
+# set.seed(111)
+# 
+# TZ <- gadm(country = "TZ", level = 0, path = tempdir())
+# plot(TZ)
+# 
+# TZ_sf= st_as_sf(TZ)
+# TZ_sp=as_Spatial(TZ_sf)
+# 
+# TZ_sf_dis <- st_union(TZ_sf)
+# plot(TZ_sf_dis)
+# 
+# 
+# # Predict
+# elevationglobal_geodata <- elevation_global(2.5, path =tempdir())
+# 
+# elevationglobal_geodata_aoi <- terra::crop(elevationglobal_geodata,TZ_sf_dis)
+# 
+# library(raster)
+# elevationglobal_geodata_aoi <- raster(elevationglobal_geodata_aoi)
+# 
+# plot(elevationglobal_geodata_aoi)
+# 
+# pred <- SpatialPoints(elevationglobal_geodata_aoi)@coords
+# pred <- as.data.frame(pred)
+# 
+# names(pred)[1:2] <- c("lon", "lat")
+# 
+# pred <- pred %>% drop_na()
+# 
+# library(sp)
+# pred_sp <-
+#     SpatialPointsDataFrame(cbind(pred$lon, pred$lat), data = pred, proj4string = CRS("+proj=longlat +datum=WGS84"))
+# 
+# 
+# yield_gain_hat <- predict(b, newdata = pred)
+# 
+# yield_gain_hat <- as.data.frame(yield_gain_hat)
+# 
+# pred_yield_gain_hat <- cbind(pred, yield_gain_hat )
+# 
+# pred_yield_gain_hat$sigma <- NULL
+# library(terra)
+# 
+# yield_gain_ras <- rast(pred_yield_gain_hat, type = "xyz")
+# plot(yield_gain_ras )
+# 
+# library(raster)
+# yield_gain_ras2 <- raster(yield_gain_ras)
+# 
+# library(sf)
+# TZ_sf_dis_sp <- as_Spatial(TZ_sf_dis)
+# yield_gain_ras2 <- mask(yield_gain_ras2, TZ_sf_dis_sp)
+# plot(yield_gain_ras2, main = "Yield gains to N")
+# 
+# library(rasterVis)
+# 
+# levelplot(yield_gain_ras2, layers = 1, margin = list(FUN = 'median'), contour=TRUE)
+# 
+# ## 
+# library(tmap)
+# yield_gain_raster_map=tm_shape(yield_gain_ras2) +
+#   tm_raster(title = "Nitrogen Use Efficiency",style = "cont", palette = "viridis")+
+#   tm_legend(position = c("right", "top"),legend.title.size=1.2,legend.text.size=1.2)
+# yield_gain_raster_map
+# 
+# tmap_save(yield_gain_raster_map,"figures/yield_gain_raster_map.png", dpi=300,width=4.88,height = 4.16)
+
+
+
+
+
+
+
+
+
+```
+
+## Profit predictions
+
+# Conclusion
+
+# References
+
+Alston, J.M., Norton, G.W., and Pardey, P. 1995. “Science under scarcity: Principles and practice for agricultural research evaluation and priority setting”. CAB International. See Chapter 7 (pp. 463-498).
+
+Athey, S., Tibshirani, J., and Wager, S. 2019. “Generalized Random Forests”. Annals of Statistics 47 (2): 1148-1178. Doi: 10.1214/18-AOS1709.
